@@ -1,5 +1,6 @@
 import time
 from functools import lru_cache
+from pathlib import Path
 from typing import Dict, List, Tuple
 
 import matplotlib.pyplot as plt
@@ -53,6 +54,7 @@ SUBSET_SIZES = [4, 6, 10, 12, 16, 20]
 MODEL_CHOICES = ["Naive Bayes", "Logistic Regression", "Linear SVM"]
 FEATURE_CHOICES = ["Bag of Words", "TF-IDF"]
 VERSION_CHOICES = ["raw", "clean"]
+RESULTS_CACHE_FILE = Path("precomputed_results.csv")
 
 
 # --------------------------------------------------------------------------------------
@@ -222,6 +224,25 @@ def build_results_table() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+@st.cache_data(show_spinner=False)
+def load_cached_results() -> pd.DataFrame:
+    """Load cached experiment table from disk, computing it once if missing."""
+    if RESULTS_CACHE_FILE.exists():
+        return pd.read_csv(RESULTS_CACHE_FILE)
+
+    df = build_results_table()
+    df.to_csv(RESULTS_CACHE_FILE, index=False)
+    return df
+
+
+def recompute_and_cache_results() -> pd.DataFrame:
+    """Force a fresh computation and refresh the on-disk cache."""
+    df = build_results_table()
+    df.to_csv(RESULTS_CACHE_FILE, index=False)
+    load_cached_results.clear()
+    return df
+
+
 # --------------------------------------------------------------------------------------
 # Inference helpers
 # --------------------------------------------------------------------------------------
@@ -348,6 +369,30 @@ Use the tabs below to (1) try live inference and (2) browse the experimental res
         st.markdown(
             "Paste text, pick a model/feature/k, and see the predicted topic with scores."
         )
+        with st.popover("Sample Text Links"):
+            st.header("Sci.space")
+            st.markdown("https://www.nasa.gov/missions/")
+            st.markdown("https://en.wikipedia.org/wiki/Space_exploration")
+
+            st.header("Sci.med")
+            st.markdown("https://www.who.int/news-room/fact-sheets")
+            st.markdown("https://en.wikipedia.org/wiki/Medical_diagnosis")
+
+            st.header("Rec.sport")
+            st.markdown("https://www.fifa.com/tournaments/mens/worldcup")
+            st.markdown("https://en.wikipedia.org/wiki/Association_football")
+
+            st.header("Rec.autos")
+
+            st.markdown("https://www.motortrend.com/cars/")
+            st.markdown("https://en.wikipedia.org/wiki/Automobile_engine")
+
+
+            st.header("Talk.politics")
+
+            st.markdown("https://www.nytimes.com/international/section/politics")
+            st.markdown("https://en.wikipedia.org/wiki/Political_ideology")
+        
 
         text = st.text_area(
             "Input text",
@@ -389,8 +434,15 @@ Use the tabs below to (1) try live inference and (2) browse the experimental res
             "Select data version for plots", VERSION_CHOICES, index=1, key="plot_version"
         )
 
-        with st.spinner("Loading experiment summary..."):
-            results_df = build_results_table()
+        results_df = load_cached_results()
+        st.caption(
+            "Showing cached experimental metrics. Use 'Recalculate metrics' to refresh."
+        )
+
+        if st.button("Recalculate metrics", type="secondary"):
+            with st.spinner("Recomputing all experiment metrics..."):
+                results_df = recompute_and_cache_results()
+            st.success("Metrics recomputed and cached for future loads.")
 
         st.markdown("### Accuracy vs number of topics (by model + feature)")
         fig_acc = plot_accuracy_lines(results_df, version_filter)
